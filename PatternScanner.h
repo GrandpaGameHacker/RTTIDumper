@@ -27,7 +27,7 @@ namespace PatternScan
 
 	}
 	
-	uintptr_t _declspec(dllexport) FindFirstReference32(uintptr_t startAddress, size_t length, uintptr_t dword)
+	uintptr_t FindFirstRef32(uintptr_t startAddress, size_t length, uintptr_t dword)
 	{
 		for(uintptr_t i = startAddress; i < startAddress + length; i+=sizeof(uintptr_t))
 		{
