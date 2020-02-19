@@ -156,6 +156,7 @@
     <ClInclude Include="Memory.h" />
     <ClInclude Include="PatternScanner.h" />
     <ClInclude Include="pch.h" />
+    <ClInclude Include="RTTI.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp" />
