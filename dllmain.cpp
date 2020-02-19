@@ -38,7 +38,7 @@ std::string DemangleSymbol(char* symbol)
     if (!((UnDecorateSymbolName(pSymbol, buff, MAX_DEMANGLE_BUFFER_LEN, UNDNAME_NAME_ONLY)) != 0))
     {
         printf("error %x\n", GetLastError());
-        return std::string();
+        return std::string(symbol); //Failsafe
     }
     return std::string(buff);
 }
@@ -62,10 +62,10 @@ void RTTIDumper()
         (TypeDescriptor*)
         (PatternScan::FindFirstString
         (baseAddress,
-            sizeOfImage,
-            type_info_pattern,
-            typestrLen)
-            - (sizeof(uintptr_t) * 2));
+         sizeOfImage,
+         type_info_pattern,
+         typestrLen)
+         - (sizeof(uintptr_t) * 2));
 
     if (type_info == NULL) return;
 
