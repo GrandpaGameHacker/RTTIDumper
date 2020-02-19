@@ -1,4 +1,3 @@
-// dllmain.cpp : Defines the entry point for the DLL application.
 #include "pch.h"
 #include "dllmain.h"
 #include <DbgHelp.h>
@@ -6,7 +5,7 @@
 #pragma comment(lib,"dbghelp.lib")
 
 const char * ProgramName = "Reckoning.exe";
-#define MAXLEN 0x1000
+#define MAX_DEMANGLE_BUFFER_LEN 0x1000
 
 BOOL APIENTRY DllMain( HMODULE hModule,
                        DWORD  ul_reason_for_call,
@@ -27,8 +26,8 @@ BOOL APIENTRY DllMain( HMODULE hModule,
 
 std::string DemangleSymbol(char* symbol)
 {
-    char buff[MAXLEN] = { 0 };
-    memset(buff, 0, MAXLEN);
+    char buff[MAX_DEMANGLE_BUFFER_LEN] = { 0 };
+    memset(buff, 0, MAX_DEMANGLE_BUFFER_LEN);
     char* pSymbol = symbol;
     if (*(char*)symbol == '.') pSymbol = symbol + 1;
     else if (*(char*)symbol == '?') pSymbol = symbol;
@@ -36,7 +35,7 @@ std::string DemangleSymbol(char* symbol)
     {
         puts("invalid msvc mangled name\n");
     }
-    if (!((UnDecorateSymbolName(pSymbol, buff, MAXLEN, UNDNAME_NAME_ONLY)) != 0))
+    if (!((UnDecorateSymbolName(pSymbol, buff, MAX_DEMANGLE_BUFFER_LEN, UNDNAME_NAME_ONLY)) != 0))
     {
         printf("error %x\n", GetLastError());
         return std::string();
@@ -53,9 +52,9 @@ void RTTIDumper()
     freopen_s(&nullfile, "CONOUT$", "w", stdout);
     SetConsoleTitle("RTTI Class Dumper");
 
-    MODULEINFO GameProc;
-    Memory::GetModuleInfo(ProgramName, &GameProc);
-    uintptr_t baseAddress = (uintptr_t)GameProc.lpBaseOfDll, sizeOfImage = GameProc.SizeOfImage;
+    MODULEINFO TargetModule;
+    Memory::GetModuleInfo(ProgramName, &TargetModule);
+    uintptr_t baseAddress = (uintptr_t)TargetModule.lpBaseOfDll, sizeOfImage = TargetModule.SizeOfImage;
     std::cout << "Beginning dumping: " << ProgramName << std::endl;
     const char* type_info_pattern = ".?AVtype_info@@";
     const size_t typestrLen = strlen(type_info_pattern);
@@ -75,13 +74,15 @@ void RTTIDumper()
     std::ofstream logstream;
     logstream.open("vftables.txt", std::ios::app);
     logstream << "vftable : symbol\n";
-#if _WIN32
-    auto class_types = PatternScan::FindReferences32(baseAddress, sizeOfImage, type_info->pVFTable);
+    auto class_types = PatternScan::FindReferences(baseAddress, sizeOfImage, type_info->pVFTable);
     size_t classesfound = 0;
     std::cout << "Finding VFTables via RTTI" << std::endl;
     for (auto class_type : class_types)
     {
-        auto references = PatternScan::FindReferences32(baseAddress, sizeOfImage, class_type);
+#ifdef _WIN64
+        //TODO: Implement 64bit
+#else
+        auto references = PatternScan::FindReferences(baseAddress, sizeOfImage, class_type);
         uintptr_t Meta = 0, pMeta = 0, vftable = 0;
 
         for (auto reference : references) {
@@ -93,7 +94,7 @@ void RTTIDumper()
             }
             if (Meta)
             {
-                pMeta = PatternScan::FindFirstReference32(baseAddress, sizeOfImage, Meta);
+                pMeta = PatternScan::FindFirstReference(baseAddress, sizeOfImage, Meta);
             }
             if (pMeta)
             {
@@ -109,8 +110,5 @@ void RTTIDumper()
 
         }
     }
-#else
-
-#endif
-    std::cout << "Done! Found: " << std::dec << classesfound << " classes" << std::endl;
 }
+#endif

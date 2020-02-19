@@ -48,12 +48,12 @@ namespace PatternScan
 		return NULL;
 	}
 
-	uintptr_t FindFirstReference32(uintptr_t startAddress, size_t length, uintptr_t dword)
+	uintptr_t FindFirstReference(uintptr_t startAddress, size_t length, uintptr_t scanValue)
 	{
 		for (uintptr_t i = startAddress; i < startAddress + length; i += sizeof(uintptr_t))
 		{
 			uintptr_t candidate = *(uintptr_t*)(i);
-			if (candidate == dword)
+			if (candidate == scanValue)
 			{
 				return i;
 			}
@@ -61,12 +61,12 @@ namespace PatternScan
 		return NULL;
 	}
 
-	uintptr_t FindFirstReference64(uintptr_t startAddress, size_t length, DWORD dword)
+	uintptr_t FindFirstReferenceDWORD(uintptr_t startAddress, size_t length, DWORD scanValue)
 	{
 		for (uintptr_t i = startAddress; i < startAddress + length; i += sizeof(DWORD))
 		{
 			DWORD candidate = *(DWORD*)(i);
-			if (candidate == dword)
+			if (candidate == scanValue)
 			{
 				return i;
 			}
@@ -74,14 +74,14 @@ namespace PatternScan
 		return NULL;
 	}
 
-	std::vector<uintptr_t> FindReferences32(uintptr_t startAddress, size_t length, uintptr_t dword)
+	std::vector<uintptr_t> FindReferences(uintptr_t startAddress, size_t length, uintptr_t scanValue)
 	{
 		std::vector<uintptr_t> resultsList;
 
 		for (uintptr_t i = startAddress; i < startAddress + length; i += sizeof(uintptr_t))
 		{
 			uintptr_t candidate = *(uintptr_t*)(i);
-			if (candidate == dword)
+			if (candidate == scanValue)
 			{
 				resultsList.push_back(i);
 			}
@@ -89,14 +89,14 @@ namespace PatternScan
 		return resultsList;
 	}
 
-	std::vector<uintptr_t> FindReferences64(uintptr_t startAddress, size_t length, DWORD dword)
+	std::vector<uintptr_t> FindReferencesDWORD(uintptr_t startAddress, size_t length, DWORD scanValue)
 	{
 		std::vector<uintptr_t> resultsList;
 
 		for (uintptr_t i = startAddress; i < startAddress + length; i += sizeof(DWORD))
 		{
 			uintptr_t candidate = *(uintptr_t*)(i);
-			if (candidate == dword)
+			if (candidate == scanValue)
 			{
 				resultsList.push_back(i);
 			}

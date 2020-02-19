@@ -10,14 +10,14 @@ typedef struct _S__TypeDescriptor
     uintptr_t pVFTable;
     uintptr_t spare;
     char name;
-}TypeDescriptor;
+} TypeDescriptor;
 
 typedef struct _S__PMD
 {
     ptrdiff_t mdisp;
     ptrdiff_t pdisp;
     ptrdiff_t vdisp;
-}PMD;
+} PMD;
 
 typedef struct _RTTIBaseClassDescriptor {
     TypeDescriptor* pTypeDescriptor;
