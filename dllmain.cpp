@@ -4,7 +4,7 @@
 #include <fstream>
 #pragma comment(lib,"dbghelp.lib")
 
-const char * ProgramName = "DarkSoulsII.exe";
+const char * ProgramName = "sekiro.exe";
 #define MAX_DEMANGLE_BUFFER_LEN 0x1000
 
 BOOL APIENTRY DllMain( HMODULE hModule,
@@ -81,11 +81,37 @@ void RTTIDumper()
     {
 #ifdef _WIN64
         //TODO: Implement 64bit
+        auto references = PatternScan::FindReferencesDWORD(baseAddress, sizeOfImage, (DWORD)(class_type-baseAddress));
+        uintptr_t Meta = 0, pMeta = 0, vftable = 0;
+        for (auto reference : references) 
+        {
+            if (*(DWORD*)reference != 0
+                && *(DWORD*)(reference + 4) != 0)
+            {
+                Meta = (reference - 0xC);
+            }
+            if (Meta)
+            {
+                pMeta = PatternScan::FindFirstReference(baseAddress, sizeOfImage, Meta);
+            }
+            if (pMeta)
+            {
+                classesfound++;
+                vftable = pMeta + 8;
+                TypeDescriptor* class_typeinfo = (TypeDescriptor*)class_type;
+                char* nameptr = &class_typeinfo->name;
+                std::string name = DemangleSymbol(nameptr);
+                logstream << std::hex << vftable << " : ";
+                logstream << name << std::endl;
+                break;
+            }
+        }
 #else
         auto references = PatternScan::FindReferences(baseAddress, sizeOfImage, class_type);
         uintptr_t Meta = 0, pMeta = 0, vftable = 0;
 
-        for (auto reference : references) {
+        for (auto reference : references)
+        {
             if (*(uintptr_t*)(reference) >= baseAddress
                 && *(uintptr_t*)(reference + 4) >= baseAddress)
             {
@@ -108,7 +134,9 @@ void RTTIDumper()
                 break;
             }
         }
+#endif
     }
+
     std::cout << "Done! Classes Dumped: " << std::dec << classesfound << std::endl;
     std::cout << "Data written to [programdir]\\vftables.txt"<< std::endl;
     Sleep(3000);
@@ -116,4 +144,3 @@ void RTTIDumper()
     FreeConsole();
     ExitThread(0);
 }
-#endif

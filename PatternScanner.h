@@ -95,7 +95,7 @@ namespace PatternScan
 
 		for (uintptr_t i = startAddress; i < startAddress + length; i += sizeof(DWORD))
 		{
-			uintptr_t candidate = *(uintptr_t*)(i);
+			DWORD candidate = *(DWORD*)(i);
 			if (candidate == scanValue)
 			{
 				resultsList.push_back(i);
