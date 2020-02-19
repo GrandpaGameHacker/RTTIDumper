@@ -4,7 +4,7 @@
 #include <fstream>
 #pragma comment(lib,"dbghelp.lib")
 
-const char * ProgramName = "Reckoning.exe";
+const char * ProgramName = "DarkSoulsII.exe";
 #define MAX_DEMANGLE_BUFFER_LEN 0x1000
 
 BOOL APIENTRY DllMain( HMODULE hModule,
@@ -55,7 +55,7 @@ void RTTIDumper()
     MODULEINFO TargetModule;
     Memory::GetModuleInfo(ProgramName, &TargetModule);
     uintptr_t baseAddress = (uintptr_t)TargetModule.lpBaseOfDll, sizeOfImage = TargetModule.SizeOfImage;
-    std::cout << "Beginning dumping: " << ProgramName << std::endl;
+    std::cout << "Begin dumping: " << ProgramName << std::endl;
     const char* type_info_pattern = ".?AVtype_info@@";
     const size_t typestrLen = strlen(type_info_pattern);
     TypeDescriptor* type_info =
@@ -107,8 +107,13 @@ void RTTIDumper()
                 logstream << name << std::endl;
                 break;
             }
-
         }
     }
+    std::cout << "Done! Classes Dumped: " << std::dec << classesfound << std::endl;
+    std::cout << "Data written to [programdir]\\vftables.txt"<< std::endl;
+    Sleep(3000);
+    fclose(stdout);
+    FreeConsole();
+    ExitThread(0);
 }
 #endif
