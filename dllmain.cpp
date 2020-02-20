@@ -4,8 +4,8 @@
 #include <fstream>
 #pragma comment(lib,"dbghelp.lib")
 
-const char * ProgramName = "DarkSoulsII.exe";
-const char * ModuleName = "DarkSoulsII.exe";
+const char * ProgramName = "sekiro.exe";
+const char * ModuleName = "sekiro.exe";
 #define MAX_DEMANGLE_BUFFER_LEN 0x1000
 
 BOOL APIENTRY DllMain( HMODULE hModule,
@@ -90,7 +90,7 @@ void RTTIDumper()
     for (auto class_type : class_types)
     {
 #ifdef _WIN64
-        //TODO: Implement 64bit
+        
         auto references = PatternScan::FindReferencesDWORD(baseAddress, sizeOfImage, (DWORD)(class_type-baseAddress));
         uintptr_t Meta = 0, pMeta = 0, vftable = 0;
         for (auto reference : references) 
