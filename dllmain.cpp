@@ -4,7 +4,8 @@
 #include <fstream>
 #pragma comment(lib,"dbghelp.lib")
 
-const char * ProgramName = "sekiro.exe";
+const char * ProgramName = "DarkSoulsII.exe";
+const char * ModuleName = "DarkSoulsII.exe";
 #define MAX_DEMANGLE_BUFFER_LEN 0x1000
 
 BOOL APIENTRY DllMain( HMODULE hModule,
@@ -26,16 +27,23 @@ BOOL APIENTRY DllMain( HMODULE hModule,
 
 std::string DemangleSymbol(char* symbol)
 {
+    std::string vftable_start = "??_7";
+    std::string vftable_end = "6B@";
     char buff[MAX_DEMANGLE_BUFFER_LEN] = { 0 };
     memset(buff, 0, MAX_DEMANGLE_BUFFER_LEN);
     char* pSymbol = symbol;
-    if (*(char*)symbol == '.') pSymbol = symbol + 1;
-    else if (*(char*)symbol == '?') pSymbol = symbol;
+    if (*(char*)(symbol + 4) == '?') pSymbol = symbol + 1;
+    else if (*(char*)symbol == '.') pSymbol = symbol + 4;
+    else if (*(char*)symbol == '?') pSymbol = symbol + 2;
+    
     else
     {
         puts("invalid msvc mangled name\n");
     }
-    if (!((UnDecorateSymbolName(pSymbol, buff, MAX_DEMANGLE_BUFFER_LEN, UNDNAME_NAME_ONLY)) != 0))
+    std::string symbol_processed = std::string(pSymbol);
+    symbol_processed.insert(0, vftable_start);
+    symbol_processed.insert(symbol_processed.size(), vftable_end);
+    if (!((UnDecorateSymbolName(symbol_processed.c_str(), buff, MAX_DEMANGLE_BUFFER_LEN, 0)) != 0))
     {
         printf("error %x\n", GetLastError());
         return std::string(symbol); //Failsafe
@@ -53,9 +61,11 @@ void RTTIDumper()
     SetConsoleTitle("RTTI Class Dumper");
 
     MODULEINFO TargetModule;
-    Memory::GetModuleInfo(ProgramName, &TargetModule);
+    Memory::GetModuleInfo(ProgramName, ModuleName, &TargetModule);
     uintptr_t baseAddress = (uintptr_t)TargetModule.lpBaseOfDll, sizeOfImage = TargetModule.SizeOfImage;
-    std::cout << "Begin dumping: " << ProgramName << std::endl;
+    std::cout << "Injected into process: " << ProgramName << std::endl;
+    std::cout << "Begin dumping: " << ModuleName << std::endl;
+    
     const char* type_info_pattern = ".?AVtype_info@@";
     const size_t typestrLen = strlen(type_info_pattern);
     TypeDescriptor* type_info =
@@ -72,8 +82,8 @@ void RTTIDumper()
     std::cout << "Found RTTI0 at: " << std::hex << type_info << std::endl;
     std::cout << "Scanning for type information..." << std::endl;
     std::ofstream logstream;
-    logstream.open("vftables.txt", std::ios::app);
-    logstream << "vftable : symbol\n";
+    logstream.open("vftable.txt", std::ios::app);
+    logstream << "vftable_virtual : vftable_rva : symbol\n";
     auto class_types = PatternScan::FindReferences(baseAddress, sizeOfImage, type_info->pVFTable);
     size_t classesfound = 0;
     std::cout << "Finding VFTables via RTTI" << std::endl;
@@ -98,10 +108,12 @@ void RTTIDumper()
             {
                 classesfound++;
                 vftable = pMeta + 8;
+                uintptr_t vftable_rva = vftable - baseAddress;
                 TypeDescriptor* class_typeinfo = (TypeDescriptor*)class_type;
                 char* nameptr = &class_typeinfo->name;
                 std::string name = DemangleSymbol(nameptr);
                 logstream << std::hex << vftable << " : ";
+                logstream << std::hex << vftable_rva << " : ";
                 logstream << name << std::endl;
                 break;
             }
@@ -126,17 +138,19 @@ void RTTIDumper()
             {
                 classesfound++;
                 vftable = pMeta + 4;
+                uintptr_t vftable_rva = vftable - baseAddress;
                 TypeDescriptor* class_typeinfo = (TypeDescriptor*)class_type;
                 char* nameptr = &class_typeinfo->name;
                 std::string name = DemangleSymbol(nameptr);
                 logstream << std::hex << vftable << " : ";
+                logstream << std::hex << vftable_rva << " : ";
                 logstream << name << std::endl;
                 break;
             }
         }
 #endif
     }
-
+    logstream.close();
     std::cout << "Done! Classes Dumped: " << std::dec << classesfound << std::endl;
     std::cout << "Data written to [programdir]\\vftables.txt"<< std::endl;
     Sleep(3000);
