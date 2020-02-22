@@ -3,8 +3,10 @@
 #include <DbgHelp.h>
 #include <fstream>
 #pragma comment(lib,"dbghelp.lib")
+
 //Name of process to be injected into
 const char * ProgramName = "DarkSoulsII.exe";
+
 //Name of loaded module inside process to
 //Extract VFTables and RTTI data from
 const char * ModuleName = "DarkSoulsII.exe";

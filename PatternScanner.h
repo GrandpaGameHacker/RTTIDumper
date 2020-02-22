@@ -29,7 +29,6 @@ namespace PatternScan
 
 	uintptr_t FindFirstString(uintptr_t startAddress, size_t length, const char* pattern, size_t patternLen)
 	{
-		size_t pos = 0;
 		for (uintptr_t i = startAddress; i < startAddress + length; i++)
 		{
 			bool match = true;
@@ -42,32 +41,6 @@ namespace PatternScan
 				}
 			}
 			if (match) {
-				return i;
-			}
-		}
-		return NULL;
-	}
-
-	uintptr_t FindFirstReference(uintptr_t startAddress, size_t length, uintptr_t scanValue)
-	{
-		for (uintptr_t i = startAddress; i < startAddress + length; i += sizeof(uintptr_t))
-		{
-			uintptr_t candidate = *(uintptr_t*)(i);
-			if (candidate == scanValue)
-			{
-				return i;
-			}
-		}
-		return NULL;
-	}
-
-	uintptr_t FindFirstReferenceDWORD(uintptr_t startAddress, size_t length, DWORD scanValue)
-	{
-		for (uintptr_t i = startAddress; i < startAddress + length; i += sizeof(DWORD))
-		{
-			DWORD candidate = *(DWORD*)(i);
-			if (candidate == scanValue)
-			{
 				return i;
 			}
 		}
@@ -104,4 +77,30 @@ namespace PatternScan
 		return resultsList;
 	}
 
+
+	uintptr_t FindFirstReference(uintptr_t startAddress, size_t length, uintptr_t scanValue)
+	{
+		for (uintptr_t i = startAddress; i < startAddress + length; i += sizeof(uintptr_t))
+		{
+			uintptr_t candidate = *(uintptr_t*)(i);
+			if (candidate == scanValue)
+			{
+				return i;
+			}
+		}
+		return NULL;
+	}
+
+	uintptr_t FindFirstReferenceDWORD(uintptr_t startAddress, size_t length, DWORD scanValue)
+	{
+		for (uintptr_t i = startAddress; i < startAddress + length; i += sizeof(DWORD))
+		{
+			DWORD candidate = *(DWORD*)(i);
+			if (candidate == scanValue)
+			{
+				return i;
+			}
+		}
+		return NULL;
+	}
 }
