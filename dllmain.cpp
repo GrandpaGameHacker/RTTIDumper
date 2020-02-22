@@ -32,11 +32,11 @@ BOOL APIENTRY DllMain( HMODULE hModule,
 
 std::string DemangleSymbol(char* symbol)
 {
-    //Here we process a symbol as a virtual function table
-    //and make some allowances for edge cases
-    //There are still a few edge cases that fail.
-    std::string vftable_start = "??_7";
-    std::string vftable_end = "6B@";
+    //Attempts to process a symbol as a const virtual function table
+    //tries to make allowences for edge cases
+    //There are still a few cases that fail.
+    std::string VFTableSymbolStart = "??_7";
+    std::string VFTableSymbolEnd = "6B@";
     char buff[MAX_DEMANGLE_BUFFER_SIZE] = { 0 };
     memset(buff, 0, MAX_DEMANGLE_BUFFER_SIZE);
     char* pSymbol = symbol;
@@ -48,10 +48,10 @@ std::string DemangleSymbol(char* symbol)
     {
         puts("invalid msvc mangled name\n");
     }
-    std::string symbol_processed = std::string(pSymbol);
-    symbol_processed.insert(0, vftable_start);
-    symbol_processed.insert(symbol_processed.size(), vftable_end);
-    if (!((UnDecorateSymbolName(symbol_processed.c_str(), buff, MAX_DEMANGLE_BUFFER_SIZE, 0)) != 0))
+    std::string ModifiedSymbol = std::string(pSymbol);
+    ModifiedSymbol.insert(0, VFTableSymbolStart);
+    ModifiedSymbol.insert(ModifiedSymbol.size(), VFTableSymbolEnd);
+    if (!((UnDecorateSymbolName(ModifiedSymbol.c_str(), buff, MAX_DEMANGLE_BUFFER_SIZE, 0)) != 0))
     {
         printf("error %x\n", GetLastError());
         return std::string(symbol); //Failsafe
@@ -77,6 +77,7 @@ void RTTIDumper()
     //This string is contained in an important structure
     //We use information from this to scan for all
     //TypeDescriptor structures in the module
+    //Read RTTI.h for more information
     const char* sTypeInfo = ".?AVtype_info@@";
     const size_t length = strlen(sTypeInfo);
     TypeDescriptor* type_info =

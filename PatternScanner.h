@@ -1,6 +1,13 @@
 #pragma once
 #include <vector>
 #include <iostream>
+
+/*
+Implements memory scanning
+These functions operate on Memory regions
+Without checking for potential access violation
+*/
+
 namespace PatternScan
 {
 	std::vector<uintptr_t> StringScan(uintptr_t startAddress, size_t length, const char* pattern, size_t patternLen) {

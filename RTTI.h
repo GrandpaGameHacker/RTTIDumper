@@ -1,5 +1,12 @@
 #pragma once
 #include <Windows.h>
+/*
+Some of these are currently unused
+But I hope to use them in the future
+For Inheritance features
+*/
+
+//It is a good as a reference too.
 
 #ifndef RTTI_H
 #define RTTI_H
@@ -8,7 +15,7 @@
 typedef struct _S__TypeDescriptor
 {
     uintptr_t pVFTable;
-    uintptr_t spare;
+    uintptr_t spare; //Unused
     char name;
 } TypeDescriptor;
 
