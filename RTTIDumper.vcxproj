@@ -153,7 +153,6 @@
   <ItemGroup>
     <ClInclude Include="dllmain.h" />
     <ClInclude Include="framework.h" />
-    <ClInclude Include="Memory.h" />
     <ClInclude Include="PatternScanner.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="RTTI.h" />

@@ -27,9 +27,6 @@
     <ClInclude Include="PatternScanner.h">
       <Filter>Utility</Filter>
     </ClInclude>
-    <ClInclude Include="Memory.h">
-      <Filter>Utility</Filter>
-    </ClInclude>
     <ClInclude Include="dllmain.h">
       <Filter>Header Files</Filter>
     </ClInclude>

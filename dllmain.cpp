@@ -2,14 +2,8 @@
 #include "dllmain.h"
 #include <DbgHelp.h>
 #include <fstream>
+#include <TlHelp32.h>
 #pragma comment(lib,"dbghelp.lib")
-
-//Name of process to be injected into
-const char * ProgramName = "DarkSoulsII.exe";
-
-//Name of loaded module inside process to
-//Extract VFTables and RTTI data from
-const char * ModuleName = "DarkSoulsII.exe";
 
 #define MAX_DEMANGLE_BUFFER_SIZE 0x1000
 
@@ -66,127 +60,146 @@ void RTTIDumper()
     AllocConsole();
     freopen_s(&nullfile, "CONOUT$", "w", stdout);
     SetConsoleTitle("RTTI Class Dumper");
+    DWORD CurrentProcessId = GetCurrentProcessId();
+    std::cout << "Injected into processID: " << CurrentProcessId << std::endl;
 
-    MODULEINFO TargetModule;
-    Memory::GetModuleInfo(ProgramName, ModuleName, &TargetModule);
-    uintptr_t baseAddress = (uintptr_t)TargetModule.lpBaseOfDll, sizeOfImage = TargetModule.SizeOfImage;
-    
-    std::cout << "Injected into process: " << ProgramName << std::endl;
-    std::cout << "Begin dumping: " << ModuleName << std::endl;
-    
-    //This string is contained in an important structure
-    //We use information from this to scan for all
-    //TypeDescriptor structures in the module
-    //Read RTTI.h for more information
+    HANDLE hModuleSnap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, CurrentProcessId);
+    if (hModuleSnap == INVALID_HANDLE_VALUE)
+    {
+        std::cout << "CreateToolhelp32Snapshot";
+        return;
+    }
+    MODULEENTRY32 ModuleEntry;
+    ModuleEntry.dwSize = sizeof(MODULEENTRY32);
     const char* sTypeInfo = ".?AVtype_info@@";
-    const size_t length = strlen(sTypeInfo);
-    TypeDescriptor* type_info =
-        (TypeDescriptor*)(PatternScan::FindFirstString(
-         baseAddress,
-         sizeOfImage,
-         sTypeInfo,
-         length) - (sizeof(uintptr_t) * 2));
-
-    if (type_info == NULL) return; //Try to prevent crash
-
-    std::cout << "Found RTTI0 at: " << std::hex << type_info << std::endl;
-    std::cout << "Scanning for TypeDescriptor structs..." << std::endl;
 
     std::ofstream LogFileStream;
-    LogFileStream.open("vftable.txt", std::ios::app);
+    LogFileStream.open("vftable.txt");
     LogFileStream << "vftable_virtual : vftable_rva : symbol\n";
 
-    std::cout << "Finding VFTables via RTTI" << std::endl;
-
-    auto TypesFound = PatternScan::FindReferences(baseAddress, sizeOfImage, type_info->pVFTable);
-    size_t TotalDumped = 0;
-    
-    for (auto Type : TypesFound)
+    if (!Module32First(hModuleSnap, &ModuleEntry))
     {
-#ifdef _WIN64
-        uintptr_t ObjectLocator = NULL,
-            MetaPointer = NULL,
-            VFTable = NULL,
-            VFTableRVA = NULL;
-
-        DWORD TypeOffset = (DWORD)(Type - baseAddress);
-        auto references = PatternScan::FindReferencesDWORD(baseAddress, sizeOfImage, TypeOffset);
-        
-        for (auto reference : references) 
-        {
-            if (*(DWORD*)reference != 0
-                && *(DWORD*)(reference + sizeof(DWORD)) != 0)
-            {
-                ObjectLocator = (reference - (sizeof(DWORD)*3));
-            }
-            if (ObjectLocator)
-            {
-                MetaPointer = PatternScan::FindFirstReference(baseAddress, sizeOfImage, ObjectLocator);
-            }
-            if (MetaPointer)
-            {
-                TotalDumped++;
-
-                VFTable = MetaPointer + sizeof(uintptr_t);
-                VFTableRVA = VFTable - baseAddress;
-
-                TypeDescriptor* pTypeDescriptor = (TypeDescriptor*)Type;
-                char* pSymbol = &pTypeDescriptor->name;
-                std::string SymbolName = DemangleSymbol(pSymbol);
-
-                LogFileStream << std::hex << VFTable << " : ";
-                LogFileStream << std::hex << VFTableRVA << " : ";
-                LogFileStream << SymbolName << std::endl;
-                break;
-            }
-        }
-#else
-        uintptr_t ObjectLocator = NULL,
-            MetaPointer = NULL,
-            VFTable = NULL,
-            VFTableRVA = NULL;
-
-        auto references = PatternScan::FindReferences(baseAddress, sizeOfImage, Type);
-        for (auto reference : references)
-        {
-            if (*(uintptr_t*)(reference) >= baseAddress
-                && *(uintptr_t*)(reference + sizeof(DWORD)) >= baseAddress)
-            {
-                ObjectLocator = (reference - (sizeof(DWORD)*3));
-            }
-            if (ObjectLocator)
-            {
-                MetaPointer = PatternScan::FindFirstReference(baseAddress, sizeOfImage, ObjectLocator);
-            }
-            if (MetaPointer)
-            {
-                TotalDumped++;
-
-                VFTable = MetaPointer + 4;
-                uintptr_t VFTableRVA= VFTable - baseAddress;
-                
-                TypeDescriptor* pTypeDescriptor = (TypeDescriptor*)Type;
-                char* pSymbol = &pTypeDescriptor->name;
-                std::string SymbolName = DemangleSymbol(pSymbol);
-                
-                LogFileStream << std::hex << VFTable << " : ";
-                LogFileStream << std::hex << VFTableRVA << " : ";
-                LogFileStream << SymbolName << std::endl;
-                break;
-            }
-        }
-#endif
+        std::cout << "Module32First:" << GetLastError() << std::endl;
+        CloseHandle(hModuleSnap);
+        return;
     }
-    LogFileStream.close();
+        bool NotFinished = true;
+        do
+        {
+            uintptr_t baseAddress = (uintptr_t)ModuleEntry.modBaseAddr;
+            uintptr_t sizeOfImage = (uintptr_t)ModuleEntry.modBaseSize;
+            std::string moduleName = std::string(ModuleEntry.szModule);
 
-    std::cout << "Done! Classes Dumped: " << std::dec << TotalDumped << std::endl;
-    std::cout << "Data written to \\vftable.txt"<< std::endl;
 
-    Sleep(5000);
+            const size_t length = strlen(sTypeInfo);
+            uintptr_t type_info_ptr = PatternScan::FindFirstString(baseAddress, sizeOfImage-length, sTypeInfo, length);
+            TypeDescriptor* type_info = (TypeDescriptor*)(type_info_ptr - (sizeof(uintptr_t) * 2));
 
-    fclose(stdout);
-    FreeConsole();
-    HMODULE self;
-    GetModuleHandleEx(NULL, "RTTIDumper.dll", &self);
-    FreeLibraryAndExitThread(self, 0x00000000);
+            if (!type_info_ptr)
+            {
+                NotFinished = Module32Next(hModuleSnap, &ModuleEntry);
+                continue;
+            }
+            else
+            {
+                std::cout << moduleName << " contains RTTI" << std::endl;
+                LogFileStream << "!<" << moduleName << ">!\n";
+                std::cout << "Found RTTI0 at: " << std::hex << type_info << std::endl;
+                std::cout << "Scanning for TypeDescriptor structs..." << std::endl;
+                auto TypesFound = PatternScan::FindReferences(baseAddress, sizeOfImage, type_info->pVFTable);
+
+                std::cout << "Finding VFTables via RTTI" << std::endl;
+                size_t TotalDumped = 0;
+                for (auto Type : TypesFound)
+                {
+
+                    uintptr_t
+                        ObjectLocator = NULL,
+                        MetaPointer = NULL,
+                        VFTable = NULL,
+                        VFTableRVA = NULL;
+#ifdef _WIN64
+                    DWORD TypeOffset = (DWORD)(Type - baseAddress);
+                    auto references = PatternScan::FindReferencesDWORD(baseAddress, sizeOfImage, TypeOffset);
+
+                    for (auto reference : references)
+                    {
+                        if (*(DWORD*)reference != 0
+                            && *(DWORD*)(reference + sizeof(DWORD)) != 0)
+                        {
+                            ObjectLocator = (reference - (sizeof(DWORD) * 3));
+                        }
+                        if (ObjectLocator)
+                        {
+                            MetaPointer = PatternScan::FindFirstReference(baseAddress, sizeOfImage, ObjectLocator);
+                        }
+                        if (MetaPointer)
+                        {
+                            TotalDumped++;
+
+                            VFTable = MetaPointer + sizeof(uintptr_t);
+                            VFTableRVA = VFTable - baseAddress;
+
+                            TypeDescriptor* pTypeDescriptor = (TypeDescriptor*)Type;
+                            char* pSymbol = &pTypeDescriptor->name;
+                            std::string SymbolName = DemangleSymbol(pSymbol);
+
+                            LogFileStream << std::hex << VFTable << " : ";
+                            LogFileStream << std::hex << VFTableRVA << " : ";
+                            LogFileStream << SymbolName << std::endl;
+                            break;
+                        }
+                    }
+#else
+
+                    auto references = PatternScan::FindReferences(baseAddress, sizeOfImage, Type);
+                    for (auto reference : references)
+                    {
+                        if (*(uintptr_t*)(reference) >= baseAddress
+                            && *(uintptr_t*)(reference + sizeof(DWORD)) >= baseAddress)
+                        {
+                            ObjectLocator = (reference - (sizeof(DWORD) * 3));
+                        }
+                        if (ObjectLocator)
+                        {
+                            MetaPointer = PatternScan::FindFirstReference(baseAddress, sizeOfImage, ObjectLocator);
+                        }
+                        if (MetaPointer)
+                        {
+                            TotalDumped++;
+
+                            VFTable = MetaPointer + 4;
+                            uintptr_t VFTableRVA = VFTable - baseAddress;
+
+                            TypeDescriptor* pTypeDescriptor = (TypeDescriptor*)Type;
+                            char* pSymbol = &pTypeDescriptor->name;
+                            std::string SymbolName = DemangleSymbol(pSymbol);
+
+                            LogFileStream << std::hex << VFTable << " : ";
+                            LogFileStream << std::hex << VFTableRVA << " : ";
+                            LogFileStream << SymbolName << std::endl;
+                            break;
+                        }
+                    }
+#endif
+                }
+                std::cout << "Done! Classes Dumped: " << std::dec << TotalDumped << std::endl;
+                std::cout << std::endl;
+            }
+
+
+            LogFileStream <<"!<"<< moduleName << "!> END\n\n";
+            NotFinished = Module32Next(hModuleSnap, &ModuleEntry);
+        } while (NotFinished);
+        LogFileStream.close();
+        std::cout << "Data written to \\vftable.txt" << std::endl;
+
+        Sleep(5000);
+
+        fclose(stdout);
+        FreeConsole();
+        HMODULE self;
+        GetModuleHandleEx(NULL, "RTTIDumper.dll", &self);
+        FreeLibraryAndExitThread(self, 0x00000000);
+    
 }
