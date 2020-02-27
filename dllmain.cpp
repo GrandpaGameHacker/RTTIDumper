@@ -53,6 +53,20 @@ std::string DemangleSymbol(char* symbol)
     return std::string(buff);
 }
 
+bool IsMemoryReadable(void* ptr, size_t byteCount)
+{
+    //Fucking hacky shit to avoid crashes ugh
+    void* tempBuffer = malloc(byteCount);
+    if (tempBuffer) {
+        bool readable = ReadProcessMemory(GetCurrentProcess(), ptr, tempBuffer, byteCount, nullptr);
+        free(tempBuffer);
+        return readable;
+    }
+    return false;
+
+}
+
+
 
 void RTTIDumper()
 {
@@ -72,7 +86,7 @@ void RTTIDumper()
     MODULEENTRY32 ModuleEntry;
     ModuleEntry.dwSize = sizeof(MODULEENTRY32);
     const char* sTypeInfo = ".?AVtype_info@@";
-
+    const size_t length = strlen(sTypeInfo);
     std::ofstream LogFileStream;
     LogFileStream.open("vftable.txt");
     LogFileStream << "vftable_virtual : vftable_rva : symbol\n";
@@ -90,8 +104,12 @@ void RTTIDumper()
             uintptr_t sizeOfImage = (uintptr_t)ModuleEntry.modBaseSize;
             std::string moduleName = std::string(ModuleEntry.szModule);
 
+            if (!IsMemoryReadable((void*)(baseAddress), sizeOfImage))
+            {
+                NotFinished = Module32Next(hModuleSnap, &ModuleEntry);
+                continue;
+            }
 
-            const size_t length = strlen(sTypeInfo);
             uintptr_t type_info_ptr = PatternScan::FindFirstString(baseAddress, sizeOfImage-length, sTypeInfo, length);
             TypeDescriptor* type_info = (TypeDescriptor*)(type_info_ptr - (sizeof(uintptr_t) * 2));
 
@@ -201,5 +219,5 @@ void RTTIDumper()
         HMODULE self;
         GetModuleHandleEx(NULL, "RTTIDumper.dll", &self);
         FreeLibraryAndExitThread(self, 0x00000000);
-    
 }
+
