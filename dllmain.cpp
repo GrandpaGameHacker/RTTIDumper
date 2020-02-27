@@ -87,9 +87,14 @@ void RTTIDumper()
     ModuleEntry.dwSize = sizeof(MODULEENTRY32);
     const char* sTypeInfo = ".?AVtype_info@@";
     const size_t length = strlen(sTypeInfo);
-    std::ofstream LogFileStream;
-    LogFileStream.open("vftable.txt");
-    LogFileStream << "vftable_virtual : vftable_rva : symbol\n";
+
+    std::ofstream VFTableLogStream;
+    VFTableLogStream.open("vftable.txt");
+    VFTableLogStream << "vftable_virtual : vftable_rva : symbol\n";
+
+    std::ofstream InheritanceLogStream;
+    InheritanceLogStream.open("inheritance.txt");
+    InheritanceLogStream << "class A : class B : class N...\n";
 
     if (!Module32First(hModuleSnap, &ModuleEntry))
     {
@@ -121,7 +126,8 @@ void RTTIDumper()
             else
             {
                 std::cout << moduleName << " contains RTTI" << std::endl;
-                LogFileStream << "!<" << moduleName << ">!\n";
+                VFTableLogStream << "!<" << moduleName << ">!\n";
+                InheritanceLogStream << "!<" << moduleName << ">!\n";
                 std::cout << "Found RTTI0 at: " << std::hex << type_info << std::endl;
                 std::cout << "Scanning for TypeDescriptor structs..." << std::endl;
                 auto TypesFound = PatternScan::FindReferences(baseAddress, sizeOfImage, type_info->pVFTable);
@@ -162,9 +168,9 @@ void RTTIDumper()
                             char* pSymbol = &pTypeDescriptor->name;
                             std::string SymbolName = DemangleSymbol(pSymbol);
 
-                            LogFileStream << std::hex << VFTable << " : ";
-                            LogFileStream << std::hex << VFTableRVA << " : ";
-                            LogFileStream << SymbolName << std::endl;
+                            VFTableLogStream << std::hex << VFTable << " : ";
+                            VFTableLogStream << std::hex << VFTableRVA << " : ";
+                            VFTableLogStream << SymbolName << std::endl;
                             break;
                         }
                     }
@@ -185,7 +191,6 @@ void RTTIDumper()
                         if (MetaPointer)
                         {
                             TotalDumped++;
-
                             VFTable = MetaPointer + 4;
                             uintptr_t VFTableRVA = VFTable - baseAddress;
 
@@ -193,9 +198,39 @@ void RTTIDumper()
                             char* pSymbol = &pTypeDescriptor->name;
                             std::string SymbolName = DemangleSymbol(pSymbol);
 
-                            LogFileStream << std::hex << VFTable << " : ";
-                            LogFileStream << std::hex << VFTableRVA << " : ";
-                            LogFileStream << SymbolName << std::endl;
+                            VFTableLogStream << std::hex << VFTable << " : ";
+                            VFTableLogStream << std::hex << VFTableRVA << " : ";
+                            VFTableLogStream << SymbolName << std::endl;
+
+                            uintptr_t ClassDescriptor = *(uintptr_t*)(ObjectLocator + 0x10);
+                            if (!ClassDescriptor)break;
+                            size_t NumBaseClasses = *(size_t*)(ClassDescriptor + 0x8);
+                            //Bugged - Not reading some classnames properly?
+                            if(NumBaseClasses <= 1)
+                            {
+                                char* pSymbol = &pTypeDescriptor->name;
+                                std::string SymbolName = DemangleSymbol(pSymbol);
+                                InheritanceLogStream << SymbolName << "\n";
+                                break;
+                            }
+                            uintptr_t * ClassArray = (uintptr_t*)(ClassDescriptor + 0xC);
+                            for (size_t i = 0; i < NumBaseClasses; i++)
+                            {
+                                uintptr_t PType = *(uintptr_t*) ClassArray[i];
+                                TypeDescriptor* pTypeDescriptor = (TypeDescriptor*)PType;
+                                char* pSymbol = &pTypeDescriptor->name;
+                                std::string SymbolName = DemangleSymbol(pSymbol);
+                                InheritanceLogStream << SymbolName;
+                                if (i + 1 != NumBaseClasses)
+                                {
+                                    InheritanceLogStream << " -> ";
+                                }
+                                else
+                                {
+                                    InheritanceLogStream << "\n";
+                                }
+                            }
+
                             break;
                         }
                     }
@@ -206,10 +241,10 @@ void RTTIDumper()
             }
 
 
-            LogFileStream <<"!<"<< moduleName << "!> END\n\n";
+            VFTableLogStream <<"!<"<< moduleName << "!> END\n\n";
             NotFinished = Module32Next(hModuleSnap, &ModuleEntry);
         } while (NotFinished);
-        LogFileStream.close();
+        VFTableLogStream.close();
         std::cout << "Data written to \\vftable.txt" << std::endl;
 
         Sleep(5000);
