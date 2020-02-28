@@ -296,7 +296,11 @@ void RTTIDumper()
         fclose(stdout);
         FreeConsole();
         HMODULE self;
+#ifdef _WIN64
+        GetModuleHandleEx(NULL, "RTTIDumper64.dll", &self);
+#else
         GetModuleHandleEx(NULL, "RTTIDumper.dll", &self);
+#endif
         FreeLibraryAndExitThread(self, 0x00000000);
 }
 
