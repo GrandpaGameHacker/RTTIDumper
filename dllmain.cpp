@@ -202,35 +202,28 @@ void RTTIDumper()
                             VFTableLogStream << std::hex << VFTableRVA << " : ";
                             VFTableLogStream << SymbolName << std::endl;
 
-                            uintptr_t ClassDescriptor = *(uintptr_t*)(ObjectLocator + 0x10);
-                            if (!ClassDescriptor)break;
-                            size_t NumBaseClasses = *(size_t*)(ClassDescriptor + 0x8);
-                            //Bugged - Not reading some classnames properly?
-                            if(NumBaseClasses <= 1)
+                            uintptr_t ClassHeirarchy = *(uintptr_t*)(ObjectLocator + 0x10);
+                            if(!IsMemoryReadable((void*)ClassHeirarchy, 0x4))
                             {
-                                char* pSymbol = &pTypeDescriptor->name;
-                                std::string SymbolName = DemangleSymbol(pSymbol);
-                                InheritanceLogStream << SymbolName << "\n";
                                 break;
                             }
-                            uintptr_t * ClassArray = (uintptr_t*)(ClassDescriptor + 0xC);
-                            for (size_t i = 0; i < NumBaseClasses; i++)
+                            size_t BaseClasses  = *(uintptr_t*)(ClassHeirarchy + 0x8);
+                            uintptr_t pClassArray= *(uintptr_t*)(ClassHeirarchy + 0xC);
+                            for(size_t i = 0; i < BaseClasses; i++)
                             {
-                                uintptr_t PType = *(uintptr_t*) ClassArray[i];
-                                TypeDescriptor* pTypeDescriptor = (TypeDescriptor*)PType;
-                                char* pSymbol = &pTypeDescriptor->name;
-                                std::string SymbolName = DemangleSymbol(pSymbol);
-                                InheritanceLogStream << SymbolName;
-                                if (i + 1 != NumBaseClasses)
+                                auto index = i * 4;
+                                TypeDescriptor * TD = (TypeDescriptor*)*(uintptr_t*)*(uintptr_t*)(pClassArray+index);
+                                std::string CurrSymbolName = DemangleSymbol(&TD->name);
+                                if (index + 1 == BaseClasses)
                                 {
-                                    InheritanceLogStream << " -> ";
+                                    InheritanceLogStream << CurrSymbolName;
                                 }
                                 else
                                 {
-                                    InheritanceLogStream << "\n";
+                                    InheritanceLogStream << CurrSymbolName << " -> ";
                                 }
                             }
-
+                            InheritanceLogStream << "\n";
                             break;
                         }
                     }
