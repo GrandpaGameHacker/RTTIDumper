@@ -57,7 +57,8 @@ bool IsMemoryReadable(void* ptr, size_t byteCount)
 {
     //Fucking hacky shit to avoid crashes ugh
     void* tempBuffer = malloc(byteCount);
-    if (tempBuffer) {
+    if (tempBuffer)
+    {
         bool readable = ReadProcessMemory(GetCurrentProcess(), ptr, tempBuffer, byteCount, nullptr);
         free(tempBuffer);
         return readable;
@@ -171,6 +172,31 @@ void RTTIDumper()
                             VFTableLogStream << std::hex << VFTable << " : ";
                             VFTableLogStream << std::hex << VFTableRVA << " : ";
                             VFTableLogStream << SymbolName << std::endl;
+
+                            uintptr_t ClassHeirarchy = *(DWORD*)(ObjectLocator + 0x10) + baseAddress;
+                            if (!IsMemoryReadable((void*)ClassHeirarchy, 0x4))
+                            {
+                                break;
+                            }
+                            DWORD BaseClasses = *(DWORD*)(ClassHeirarchy + 0x8);
+                            uintptr_t pClassArray = *(DWORD*)(ClassHeirarchy + 0xC) + baseAddress;
+                            for (DWORD i = 0; i < BaseClasses; i++)
+                            {
+                                auto index = i * 4;
+                                uintptr_t TDPtr = *(DWORD*)(pClassArray + index) + baseAddress;
+                                TDPtr = *(DWORD*)TDPtr + baseAddress;
+                                TypeDescriptor* TD = (TypeDescriptor*)TDPtr;
+                                std::string CurrSymbolName = DemangleSymbol(&TD->name);
+                                if (i + 1 == BaseClasses)
+                                {
+                                    InheritanceLogStream << CurrSymbolName;
+                                }
+                                else
+                                {
+                                    InheritanceLogStream << CurrSymbolName << " -> ";
+                                }
+                            }
+                            InheritanceLogStream << "\n";
                             break;
                         }
                     }
@@ -214,7 +240,7 @@ void RTTIDumper()
                                 auto index = i * 4;
                                 TypeDescriptor * TD = (TypeDescriptor*)*(uintptr_t*)*(uintptr_t*)(pClassArray+index);
                                 std::string CurrSymbolName = DemangleSymbol(&TD->name);
-                                if (index + 1 == BaseClasses)
+                                if (i + 1 == BaseClasses)
                                 {
                                     InheritanceLogStream << CurrSymbolName;
                                 }
@@ -235,10 +261,13 @@ void RTTIDumper()
 
 
             VFTableLogStream <<"!<"<< moduleName << "!> END\n\n";
+            InheritanceLogStream <<"!<"<< moduleName << "!> END\n\n";
             NotFinished = Module32Next(hModuleSnap, &ModuleEntry);
         } while (NotFinished);
         VFTableLogStream.close();
-        std::cout << "Data written to \\vftable.txt" << std::endl;
+        InheritanceLogStream.close();
+        std::cout << "VFTable Data written to \\vftable.txt" << std::endl;
+        std::cout << "Inheritance Data written to \\inheritance.txt" << std::endl;
 
         Sleep(5000);
 

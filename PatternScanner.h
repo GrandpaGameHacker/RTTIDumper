@@ -13,7 +13,6 @@ namespace PatternScan
 	std::vector<uintptr_t> StringScan(uintptr_t startAddress, size_t length, const char* pattern, size_t patternLen) {
 		{
 			std::vector<uintptr_t> resultsList;
-			size_t pos = 0;
 			for (uintptr_t i = startAddress; i < startAddress + length; i++)
 			{
 				bool match = true;
