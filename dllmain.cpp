@@ -5,6 +5,20 @@
 #include <TlHelp32.h>
 #pragma comment(lib,"dbghelp.lib")
 
+/*CurrentNotes:
+
+#FEATURE
+Constructor Analysis (Possible members, Memory Size) (Include base class constructors, call traversal??)
+Trying to wrap my head around a generic solution is just fuck.
+!Use Zydis for Asm Parse! Fast and lightweight
+64 bit Constructor AOB Scan - Could be useful for constructor stuff
+LEA RAX, [VFTABLE-THISADDRESS];
+MOV [RBX], RAX; 
+48 8D 05 ?? ?? ?? ??  48 89 03
+#ENDFEATURE
+*/
+
+
 #define MAX_DEMANGLE_BUFFER_SIZE 0x1000
 
 BOOL APIENTRY DllMain( HMODULE hModule,
@@ -71,7 +85,7 @@ void ApplySymbolFilters(std::string& Symbol)
     }
 }
 
-bool IsMemoryReadable(void* ptr, size_t byteCount)
+bool IsMemoryRangeReadable(void* ptr, size_t byteCount)
 {
     //Fucking hacky shit to avoid crashes ugh
     void* tempBuffer = malloc(byteCount);
@@ -82,9 +96,29 @@ bool IsMemoryReadable(void* ptr, size_t byteCount)
         return readable;
     }
     return false;
-
 }
 
+bool IsMemoryNotExecutable(void* ptr)
+{
+    MEMORY_BASIC_INFORMATION MemInfo{ 0 };
+    VirtualQuery(ptr, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION));
+    switch (MemInfo.Protect)
+    {
+    case PAGE_NOACCESS:
+    case PAGE_EXECUTE:
+    case PAGE_EXECUTE_READ:
+    case PAGE_EXECUTE_READWRITE:
+        return false;
+        break;
+    case PAGE_READONLY:
+    case PAGE_READWRITE:
+    case PAGE_WRITECOPY:
+        return true;
+        break;
+    default:
+        return false;
+    };
+};
 
 
 void RTTIDumper()
@@ -128,7 +162,7 @@ void RTTIDumper()
             uintptr_t sizeOfImage = (uintptr_t)ModuleEntry.modBaseSize;
             std::string moduleName = std::string(ModuleEntry.szModule);
 
-            if (!IsMemoryReadable((void*)(baseAddress), sizeOfImage))
+            if (!IsMemoryRangeReadable((void*)(baseAddress), sizeOfImage))
             {
                 NotFinished = Module32Next(hModuleSnap, &ModuleEntry);
                 continue;
@@ -167,6 +201,7 @@ void RTTIDumper()
 
                     for (auto reference : references)
                     {
+                        if (!IsMemoryNotExecutable((void*)reference)) continue;
                         if (*(DWORD*)reference != 0
                             && *(DWORD*)(reference + sizeof(DWORD)) != 0)
                         {
@@ -225,6 +260,7 @@ void RTTIDumper()
                     auto references = PatternScan::FindReferences(baseAddress, sizeOfImage, Type);
                     for (auto reference : references)
                     {
+                        if (!IsMemoryNotExecutable((void*)reference)) continue;
                         if (*(uintptr_t*)(reference) >= baseAddress
                             && *(uintptr_t*)(reference + sizeof(DWORD)) >= baseAddress)
                         {
@@ -250,7 +286,7 @@ void RTTIDumper()
                             VFTableLogStream << SymbolName << std::endl;
 
                             uintptr_t ClassHeirarchy = *(uintptr_t*)(ObjectLocator + 0x10);
-                            if(!IsMemoryReadable((void*)ClassHeirarchy, 0x4))
+                            if(!IsMemoryRangeReadable((void*)ClassHeirarchy, 0x4))
                             {
                                 break;
                             }
