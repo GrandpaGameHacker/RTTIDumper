@@ -53,6 +53,24 @@ std::string DemangleSymbol(char* symbol)
     return std::string(buff);
 }
 
+void StrFilter(std::string& string, const std::string& substring)
+{
+    size_t pos = std::string::npos;
+    while ((pos = string.find(substring)) != std::string::npos)
+    {
+        string.erase(pos, substring.length());
+    }
+}
+
+void ApplySymbolFilters(std::string& Symbol)
+{
+    std::vector<std::string> filters = {"::`vftable'", "const ", "::`anonymous namespace'"};
+    for (std::string filter : filters)
+    {
+        StrFilter(Symbol, filter);
+    }
+}
+
 bool IsMemoryReadable(void* ptr, size_t byteCount)
 {
     //Fucking hacky shit to avoid crashes ugh
@@ -168,6 +186,7 @@ void RTTIDumper()
                             TypeDescriptor* pTypeDescriptor = (TypeDescriptor*)Type;
                             char* pSymbol = &pTypeDescriptor->name;
                             std::string SymbolName = DemangleSymbol(pSymbol);
+                            ApplySymbolFilters(SymbolName);
 
                             VFTableLogStream << std::hex << VFTable << " : ";
                             VFTableLogStream << std::hex << VFTableRVA << " : ";
@@ -187,6 +206,7 @@ void RTTIDumper()
                                 TDPtr = *(DWORD*)TDPtr + baseAddress;
                                 TypeDescriptor* TD = (TypeDescriptor*)TDPtr;
                                 std::string CurrSymbolName = DemangleSymbol(&TD->name);
+                                ApplySymbolFilters(CurrSymbolName);
                                 if (i + 1 == BaseClasses)
                                 {
                                     InheritanceLogStream << CurrSymbolName;
@@ -223,6 +243,7 @@ void RTTIDumper()
                             TypeDescriptor* pTypeDescriptor = (TypeDescriptor*)Type;
                             char* pSymbol = &pTypeDescriptor->name;
                             std::string SymbolName = DemangleSymbol(pSymbol);
+                            ApplySymbolFilters(SymbolName);
 
                             VFTableLogStream << std::hex << VFTable << " : ";
                             VFTableLogStream << std::hex << VFTableRVA << " : ";
@@ -240,6 +261,7 @@ void RTTIDumper()
                                 auto index = i * 4;
                                 TypeDescriptor * TD = (TypeDescriptor*)*(uintptr_t*)*(uintptr_t*)(pClassArray+index);
                                 std::string CurrSymbolName = DemangleSymbol(&TD->name);
+                                ApplySymbolFilters(CurrSymbolName);
                                 if (i + 1 == BaseClasses)
                                 {
                                     InheritanceLogStream << CurrSymbolName;
