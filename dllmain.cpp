@@ -87,7 +87,6 @@ void ApplySymbolFilters(std::string& Symbol)
 
 bool IsMemoryRangeReadable(void* ptr, size_t byteCount)
 {
-    //Fucking hacky shit to avoid crashes ugh
     void* tempBuffer = malloc(byteCount);
     if (tempBuffer)
     {
@@ -102,23 +101,40 @@ bool IsMemoryNotExecutable(void* ptr)
 {
     MEMORY_BASIC_INFORMATION MemInfo{ 0 };
     VirtualQuery(ptr, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION));
-    switch (MemInfo.Protect)
-    {
-    case PAGE_NOACCESS:
-    case PAGE_EXECUTE:
-    case PAGE_EXECUTE_READ:
-    case PAGE_EXECUTE_READWRITE:
-        return false;
-        break;
-    case PAGE_READONLY:
-    case PAGE_READWRITE:
-    case PAGE_WRITECOPY:
-        return true;
-        break;
-    default:
-        return false;
-    };
+    DWORD mask = (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY);
+    bool b = (MemInfo.Protect & mask);
+    return b;
 };
+
+bool IsMemoryReadable(void* ptr)
+{
+    MEMORY_BASIC_INFORMATION MemInfo{ 0 };
+    VirtualQuery(ptr, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION));
+    DWORD mask = (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY);
+    bool b = (MemInfo.Protect & mask);
+    return b;
+};
+
+void FixupImageNoAccess(uintptr_t moduleBase)
+{
+    /*When image sections are in memory as comitted
+    but set to PAGE_NOACCESS this comes in handy.
+    This stops the Dumper from skipping a module, just because it has an
+    unreadable section in the PE file*/
+    MEMORY_BASIC_INFORMATION MemInfo { 0 };
+    size_t offset { 0 };
+    do
+    {
+        void* addr = (void*)(moduleBase + offset);
+        VirtualQuery(addr, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION));
+        if (MemInfo.Type == MEM_IMAGE && MemInfo.State == MEM_COMMIT && MemInfo.Protect == PAGE_NOACCESS)
+        {
+            DWORD flOldProtect;
+            VirtualProtect(MemInfo.BaseAddress, MemInfo.RegionSize, PAGE_READONLY, &flOldProtect);
+        }
+        offset += MemInfo.RegionSize;
+    } while (MemInfo.Type == MEM_IMAGE);
+}
 
 
 void RTTIDumper()
@@ -161,6 +177,12 @@ void RTTIDumper()
             uintptr_t baseAddress = (uintptr_t)ModuleEntry.modBaseAddr;
             uintptr_t sizeOfImage = (uintptr_t)ModuleEntry.modBaseSize;
             std::string moduleName = std::string(ModuleEntry.szModule);
+
+            if (!IsMemoryRangeReadable((void*)(baseAddress), sizeOfImage))
+            {
+                std::cout << "WARNING: Fixing Image due to unreadable sections!" << std::endl;
+                FixupImageNoAccess(baseAddress);
+            }
 
             if (!IsMemoryRangeReadable((void*)(baseAddress), sizeOfImage))
             {
@@ -228,7 +250,7 @@ void RTTIDumper()
                             VFTableLogStream << SymbolName << std::endl;
 
                             uintptr_t ClassHeirarchy = *(DWORD*)(ObjectLocator + 0x10) + baseAddress;
-                            if (!IsMemoryReadable((void*)ClassHeirarchy, 0x4))
+                            if (!IsMemoryReadable((void*)ClassHeirarchy))
                             {
                                 break;
                             }
@@ -286,7 +308,7 @@ void RTTIDumper()
                             VFTableLogStream << SymbolName << std::endl;
 
                             uintptr_t ClassHeirarchy = *(uintptr_t*)(ObjectLocator + 0x10);
-                            if(!IsMemoryRangeReadable((void*)ClassHeirarchy, 0x4))
+                            if(!IsMemoryReadable((void*)ClassHeirarchy))
                             {
                                 break;
                             }
