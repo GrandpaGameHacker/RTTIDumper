@@ -1,25 +1,7 @@
-#include "pch.h"
 #include "dllmain.h"
-#include <DbgHelp.h>
-#include <fstream>
-#include <TlHelp32.h>
 #pragma comment(lib,"dbghelp.lib")
 
-/*CurrentNotes:
-
-#FEATURE
-Constructor Analysis (Possible members, Memory Size) (Include base class constructors, call traversal??)
-Trying to wrap my head around a generic solution is just fuck.
-!Use Zydis for Asm Parse! Fast and lightweight
-64 bit Constructor AOB Scan - Could be useful for constructor stuff
-LEA RAX, [VFTABLE-THISADDRESS];
-MOV [RBX], RAX; 
-48 8D 05 ?? ?? ?? ??  48 89 03
-#ENDFEATURE
-*/
-
-
-#define MAX_DEMANGLE_BUFFER_SIZE 0x1000
+#define MAX_BUFFER_SIZE 0x1000
 
 BOOL APIENTRY DllMain( HMODULE hModule,
                        DWORD  ul_reason_for_call,
@@ -37,105 +19,6 @@ BOOL APIENTRY DllMain( HMODULE hModule,
     }
     return TRUE;
 }
-
-std::string DemangleSymbol(char* symbol)
-{
-    //Attempts to process a symbol as a const virtual function table
-    //tries to make allowences for edge cases
-    //There are still a few cases that fail.
-    std::string VFTableSymbolStart = "??_7";
-    std::string VFTableSymbolEnd = "6B@";
-    char buff[MAX_DEMANGLE_BUFFER_SIZE] = { 0 };
-    memset(buff, 0, MAX_DEMANGLE_BUFFER_SIZE);
-    char* pSymbol = symbol;
-    if (*(char*)(symbol + 4) == '?') pSymbol = symbol + 1;
-    else if (*(char*)symbol == '.') pSymbol = symbol + 4;
-    else if (*(char*)symbol == '?') pSymbol = symbol + 2;
-    
-    else
-    {
-        puts("invalid msvc mangled name\n");
-    }
-    std::string ModifiedSymbol = std::string(pSymbol);
-    ModifiedSymbol.insert(0, VFTableSymbolStart);
-    ModifiedSymbol.insert(ModifiedSymbol.size(), VFTableSymbolEnd);
-    if (!((UnDecorateSymbolName(ModifiedSymbol.c_str(), buff, MAX_DEMANGLE_BUFFER_SIZE, 0)) != 0))
-    {
-        printf("error %x\n", GetLastError());
-        return std::string(symbol); //Failsafe
-    }
-    return std::string(buff);
-}
-
-void StrFilter(std::string& string, const std::string& substring)
-{
-    size_t pos = std::string::npos;
-    while ((pos = string.find(substring)) != std::string::npos)
-    {
-        string.erase(pos, substring.length());
-    }
-}
-
-void ApplySymbolFilters(std::string& Symbol)
-{
-    std::vector<std::string> filters = {"::`vftable'", "const ", "::`anonymous namespace'"};
-    for (std::string filter : filters)
-    {
-        StrFilter(Symbol, filter);
-    }
-}
-
-bool IsMemoryRangeReadable(void* ptr, size_t byteCount)
-{
-    void* tempBuffer = malloc(byteCount);
-    if (tempBuffer)
-    {
-        bool readable = ReadProcessMemory(GetCurrentProcess(), ptr, tempBuffer, byteCount, nullptr);
-        free(tempBuffer);
-        return readable;
-    }
-    return false;
-}
-
-bool IsMemoryNotExecutable(void* ptr)
-{
-    MEMORY_BASIC_INFORMATION MemInfo{ 0 };
-    VirtualQuery(ptr, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION));
-    DWORD mask = (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY);
-    bool b = (MemInfo.Protect & mask);
-    return b;
-};
-
-bool IsMemoryReadable(void* ptr)
-{
-    MEMORY_BASIC_INFORMATION MemInfo{ 0 };
-    VirtualQuery(ptr, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION));
-    DWORD mask = (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY);
-    bool b = (MemInfo.Protect & mask);
-    return b;
-};
-
-void FixupImageNoAccess(uintptr_t moduleBase)
-{
-    /*When image sections are in memory as comitted
-    but set to PAGE_NOACCESS this comes in handy.
-    This stops the Dumper from skipping a module, just because it has an
-    unreadable section in the PE file*/
-    MEMORY_BASIC_INFORMATION MemInfo { 0 };
-    size_t offset { 0 };
-    do
-    {
-        void* addr = (void*)(moduleBase + offset);
-        VirtualQuery(addr, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION));
-        if (MemInfo.Type == MEM_IMAGE && MemInfo.State == MEM_COMMIT && MemInfo.Protect == PAGE_NOACCESS)
-        {
-            DWORD flOldProtect;
-            VirtualProtect(MemInfo.BaseAddress, MemInfo.RegionSize, PAGE_READONLY, &flOldProtect);
-        }
-        offset += MemInfo.RegionSize;
-    } while (MemInfo.Type == MEM_IMAGE);
-}
-
 
 void RTTIDumper()
 {
@@ -163,7 +46,7 @@ void RTTIDumper()
 
     std::ofstream InheritanceLogStream;
     InheritanceLogStream.open("inheritance.txt");
-    InheritanceLogStream << "class A : class B : class N...\n";
+    InheritanceLogStream << "class C -> class B -> class ...\n";
 
     if (!Module32First(hModuleSnap, &ModuleEntry))
     {
@@ -177,6 +60,13 @@ void RTTIDumper()
             uintptr_t baseAddress = (uintptr_t)ModuleEntry.modBaseAddr;
             uintptr_t sizeOfImage = (uintptr_t)ModuleEntry.modBaseSize;
             std::string moduleName = std::string(ModuleEntry.szModule);
+
+            if (isSystemModule(ModuleEntry.szExePath))
+            {
+                std::cout << "Skipping system module: " << ModuleEntry.szModule << std::endl;
+                NotFinished = Module32Next(hModuleSnap, &ModuleEntry);
+                continue;
+            }
 
             if (!IsMemoryRangeReadable((void*)(baseAddress), sizeOfImage))
             {
@@ -360,5 +250,127 @@ void RTTIDumper()
         GetModuleHandleEx(NULL, "RTTIDumper.dll", &self);
 #endif
         FreeLibraryAndExitThread(self, 0x00000000);
+}
+
+
+std::string DemangleSymbol(char* symbol)
+{
+    //Attempts to process a symbol as a const virtual function table
+    //tries to make allowences for edge cases
+    //There are still a few cases that fail.
+    std::string VFTableSymbolStart = "??_7";
+    std::string VFTableSymbolEnd = "6B@";
+    char buff[MAX_BUFFER_SIZE] = { 0 };
+    memset(buff, 0, MAX_BUFFER_SIZE);
+    char* pSymbol = symbol;
+    if (*(char*)(symbol + 4) == '?') pSymbol = symbol + 1;
+    else if (*(char*)symbol == '.') pSymbol = symbol + 4;
+    else if (*(char*)symbol == '?') pSymbol = symbol + 2;
+
+    else
+    {
+        puts("invalid msvc mangled name\n");
+    }
+    std::string ModifiedSymbol = std::string(pSymbol);
+    ModifiedSymbol.insert(0, VFTableSymbolStart);
+    ModifiedSymbol.insert(ModifiedSymbol.size(), VFTableSymbolEnd);
+    if (!((UnDecorateSymbolName(ModifiedSymbol.c_str(), buff, MAX_BUFFER_SIZE, 0)) != 0))
+    {
+        printf("error %x\n", GetLastError());
+        return std::string(symbol); //Failsafe
+    }
+    return std::string(buff);
+}
+
+bool isSystemModule(char * szPath)
+{
+    const char* systempath = "\\Windows\\";
+    int i, j;
+    for (i = 0; szPath[i] != '\0'; i++) {
+        j = 0;
+        if (szPath[i] == systempath[j]) {
+            while (szPath[i] == systempath[j])
+            {
+                i++;
+                j++;
+            }
+            if (systempath[j] == '\0')
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+void StrFilter(std::string& string, const std::string& substring)
+{
+    size_t pos = std::string::npos;
+    while ((pos = string.find(substring)) != std::string::npos)
+    {
+        string.erase(pos, substring.length());
+    }
+}
+
+void ApplySymbolFilters(std::string& Symbol)
+{
+    std::vector<std::string> filters = { "::`vftable'", "const ", "::`anonymous namespace'" };
+    for (std::string filter : filters)
+    {
+        StrFilter(Symbol, filter);
+    }
+}
+
+bool IsMemoryRangeReadable(void* ptr, size_t byteCount)
+{
+    void* tempBuffer = malloc(byteCount);
+    if (tempBuffer)
+    {
+        bool readable = ReadProcessMemory(GetCurrentProcess(), ptr, tempBuffer, byteCount, nullptr);
+        free(tempBuffer);
+        return readable;
+    }
+    return false;
+}
+
+bool IsMemoryReadable(void* ptr)
+{
+    MEMORY_BASIC_INFORMATION MemInfo{ 0 };
+    VirtualQuery(ptr, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION));
+    DWORD mask = (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY);
+    bool b = (MemInfo.Protect & mask);
+    return b;
+};
+
+bool IsMemoryNotExecutable(void* ptr)
+{
+    MEMORY_BASIC_INFORMATION MemInfo{ 0 };
+    VirtualQuery(ptr, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION));
+    DWORD mask = (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY);
+    bool b = (MemInfo.Protect & mask);
+    return b;
+};
+
+
+
+void FixupImageNoAccess(uintptr_t moduleBase)
+{
+    /*When image sections are in memory as comitted
+    but set to PAGE_NOACCESS this comes in handy.
+    This stops the Dumper from skipping a module, just because it has an
+    unreadable section in the PE file*/
+    MEMORY_BASIC_INFORMATION MemInfo{ 0 };
+    size_t offset{ 0 };
+    do
+    {
+        void* addr = (void*)(moduleBase + offset);
+        VirtualQuery(addr, &MemInfo, sizeof(MEMORY_BASIC_INFORMATION));
+        if (MemInfo.Type == MEM_IMAGE && MemInfo.State == MEM_COMMIT && MemInfo.Protect == PAGE_NOACCESS)
+        {
+            DWORD flOldProtect;
+            VirtualProtect(MemInfo.BaseAddress, MemInfo.RegionSize, PAGE_READONLY, &flOldProtect);
+        }
+        offset += MemInfo.RegionSize;
+    } while (MemInfo.Type == MEM_IMAGE);
 }
 

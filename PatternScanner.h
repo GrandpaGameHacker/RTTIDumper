@@ -1,10 +1,9 @@
 #pragma once
 #include <vector>
-#include <iostream>
 
 /*
 Implements memory scanning
-These functions operate on Memory regions
+These functions operate on Memory 
 Without checking for potential access violation
 */
 
@@ -82,7 +81,6 @@ namespace PatternScan
 		}
 		return resultsList;
 	}
-
 
 	uintptr_t FindFirstReference(uintptr_t startAddress, size_t length, uintptr_t scanValue)
 	{
