@@ -1,5 +1,8 @@
+> **Note**
+> This project remains as an example or a tool, it is however outdated and you should use ClassDumper2 / SMemory API which are both actively developed.
+
 # RTTIDumper
-Injected Windows DLL that dumps Virtual Function Tables with Type Information from binaries including closed source binaries. This project is still in development.
+Injected Windows DLL that dumps Virtual Function Tables with Type Information from binaries including closed source binaries.
 
 Only works with binaries compiled with Microsoft Visual Studio and contain Runtime Type information (RTTI).
 
